@@ -7,8 +7,20 @@ import { NextRequest, NextResponse } from 'next/server';
  * and can be deployed on Vercel without needing a separate backend server.
  * 
  * Endpoint: /api/webhook/code-update
- * Method: POST
+ * Methods: POST (send code), GET (retrieve code)
  */
+
+// In-memory storage for code updates (per session)
+// Note: This resets when the server restarts. For production, use a database.
+interface StoredCode {
+  code: string;
+  language: string;
+  timestamp: string;
+  userId?: string;
+  lastUpdated: string;
+}
+
+const codeStore = new Map<string, StoredCode>();
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +56,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Store the code in memory
+    codeStore.set(sessionId, {
+      code,
+      language,
+      timestamp,
+      userId,
+      lastUpdated: new Date().toISOString(),
+    });
+
     // Log the code update (visible in Vercel logs)
     console.log('\n=================================');
     console.log('📝 Code Update Received');
@@ -55,6 +76,7 @@ export async function POST(request: NextRequest) {
     console.log('Code Length:', code?.length || 0, 'characters');
     console.log('Code Preview:');
     console.log(code.substring(0, 200) + (code.length > 200 ? '...' : ''));
+    console.log('Stored sessions:', codeStore.size);
     console.log('=================================\n');
 
     // ═══════════════════════════════════════════════════════
@@ -139,14 +161,81 @@ export async function OPTIONS(request: NextRequest) {
   );
 }
 
-// Optional: GET handler for testing/health check
+// GET handler to retrieve stored code
 export async function GET(request: NextRequest) {
-  return NextResponse.json({
-    status: 'ok',
-    endpoint: '/api/webhook/code-update',
-    methods: ['POST'],
-    message: 'Webhook endpoint is running',
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    // Get sessionId from query parameters
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
+
+    // If no sessionId provided, return info about all sessions
+    if (!sessionId) {
+      const sessions = Array.from(codeStore.keys());
+      return NextResponse.json({
+        status: 'ok',
+        endpoint: '/api/webhook/code-update',
+        methods: ['POST', 'GET'],
+        message: 'Webhook endpoint is running',
+        totalSessions: codeStore.size,
+        sessions: sessions,
+        usage: {
+          POST: 'Send code updates with { code, language, timestamp, sessionId, userId }',
+          GET: 'Retrieve code with ?sessionId=<session-id>',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Verify API key (optional but recommended for security)
+    const apiKey = request.headers.get('x-api-key');
+    const expectedKey = process.env.WEBHOOK_API_KEY;
+    
+    if (expectedKey && apiKey !== expectedKey) {
+      console.warn('❌ Unauthorized GET attempt');
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Unauthorized',
+          message: 'Invalid API key' 
+        },
+        { status: 401 }
+      );
+    }
+
+    // Retrieve code from store
+    const storedCode = codeStore.get(sessionId);
+
+    if (!storedCode) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Not Found',
+          message: `No code found for session: ${sessionId}`,
+          availableSessions: Array.from(codeStore.keys()),
+        },
+        { status: 404 }
+      );
+    }
+
+    console.log(`\n📖 Code Retrieved for session: ${sessionId}`);
+    
+    return NextResponse.json({
+      success: true,
+      sessionId,
+      ...storedCode,
+    });
+
+  } catch (error) {
+    console.error('❌ Error retrieving code:', error);
+    
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
 }
 

@@ -27,7 +27,10 @@ export default function CodeEditor() {
 
   // Send code updates via webhook
   useEffect(() => {
-    if (!webhookConfig.enabled) return;
+    if (!webhookConfig.enabled) {
+      console.log('[Webhook] Disabled - not sending');
+      return;
+    }
 
     const payload: WebhookPayload = {
       code,
@@ -35,6 +38,14 @@ export default function CodeEditor() {
       timestamp: new Date().toISOString(),
       sessionId: sessionIdRef.current,
     };
+
+    // Log what we're about to send
+    console.log('[Webhook] Preparing to send:', {
+      codeLength: code.length,
+      language,
+      sessionId: sessionIdRef.current,
+      codePreview: code.substring(0, 100) + (code.length > 100 ? '...' : '')
+    });
 
     // Send the webhook
     debouncedWebhookRef.current(payload);
