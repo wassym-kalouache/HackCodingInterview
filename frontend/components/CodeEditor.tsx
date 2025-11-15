@@ -5,8 +5,9 @@ import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { createDebouncedWebhook, generateSessionId, type WebhookPayload } from '@/lib/webhook';
+import { createDebouncedWebhook, type WebhookPayload } from '@/lib/webhook';
 import { webhookConfig, WEBHOOK_DEBOUNCE_DELAY } from '@/lib/webhook-config';
+import { getOrCreateSessionId } from '@/lib/session';
 
 export default function CodeEditor() {
   const [code, setCode] = useState(`function twoSum(nums, target) {
@@ -19,8 +20,13 @@ export default function CodeEditor() {
   const [isRunning, setIsRunning] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   
-  // Session ID for tracking this coding session
-  const sessionIdRef = useRef<string>(generateSessionId());
+  // Session ID for tracking this coding session (shared across the app)
+  const sessionIdRef = useRef<string>('');
+  
+  // Initialize session ID
+  useEffect(() => {
+    sessionIdRef.current = getOrCreateSessionId();
+  }, []);
   
   // Create debounced webhook function
   const debouncedWebhookRef = useRef(createDebouncedWebhook(webhookConfig, WEBHOOK_DEBOUNCE_DELAY));
