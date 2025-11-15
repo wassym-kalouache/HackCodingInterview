@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createDebouncedWebhook, generateSessionId, type WebhookPayload } from '@/lib/webhook';
+import { webhookConfig, WEBHOOK_DEBOUNCE_DELAY } from '@/lib/webhook-config';
 
 export default function CodeEditor() {
   const [code, setCode] = useState(`function twoSum(nums, target) {
@@ -15,6 +17,39 @@ export default function CodeEditor() {
   const [language, setLanguage] = useState('javascript');
   const [output, setOutput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  
+  // Session ID for tracking this coding session
+  const sessionIdRef = useRef<string>(generateSessionId());
+  
+  // Create debounced webhook function
+  const debouncedWebhookRef = useRef(createDebouncedWebhook(webhookConfig, WEBHOOK_DEBOUNCE_DELAY));
+
+  // Send code updates via webhook
+  useEffect(() => {
+    if (!webhookConfig.enabled) return;
+
+    const payload: WebhookPayload = {
+      code,
+      language,
+      timestamp: new Date().toISOString(),
+      sessionId: sessionIdRef.current,
+    };
+
+    // Send the webhook
+    debouncedWebhookRef.current(payload);
+    
+    // Update status asynchronously
+    const sendingTimer = setTimeout(() => setWebhookStatus('sending'), 0);
+    const sentTimer = setTimeout(() => setWebhookStatus('sent'), WEBHOOK_DEBOUNCE_DELAY + 500);
+    const idleTimer = setTimeout(() => setWebhookStatus('idle'), WEBHOOK_DEBOUNCE_DELAY + 1500);
+
+    return () => {
+      clearTimeout(sendingTimer);
+      clearTimeout(sentTimer);
+      clearTimeout(idleTimer);
+    };
+  }, [code, language]);
 
   const handleEditorChange = (value: string | undefined) => {
     setCode(value || '');
@@ -60,6 +95,24 @@ export default function CodeEditor() {
             <option value="java">Java</option>
             <option value="cpp">C++</option>
           </select>
+          
+          {/* Webhook Status Indicator */}
+          {webhookConfig.enabled && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-muted text-xs">
+              <div className={`w-2 h-2 rounded-full ${
+                webhookStatus === 'sending' ? 'bg-yellow-500 animate-pulse' :
+                webhookStatus === 'sent' ? 'bg-green-500' :
+                webhookStatus === 'error' ? 'bg-red-500' :
+                'bg-gray-400'
+              }`} />
+              <span className="text-muted-foreground">
+                {webhookStatus === 'sending' ? 'Saving...' :
+                 webhookStatus === 'sent' ? 'Saved' :
+                 webhookStatus === 'error' ? 'Error' :
+                 'Auto-save'}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button 

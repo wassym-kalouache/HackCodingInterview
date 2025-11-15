@@ -76,6 +76,9 @@ You can return the answer in any order.`,
           </Panel>
         </PanelGroup>
       </main>
+
+      {/* ElevenLabs Conversational AI Widget */}
+      <elevenlabs-convai agent-id="agent_8701ka3h4qpqfghb7z4f3bv31c0b"></elevenlabs-convai>
     </div>
   );
 }
